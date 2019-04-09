@@ -23,7 +23,7 @@ proto-to-postman \
 
 ## Limitation
 
-- Only support POST Method
-- Only support Postman v2.1.0 scheme
-- Parse request body is dirty...
+- Only supports POST Method
+- Only supports Postman v2.1.0 scheme
+- Support to create only basic type fields of body
 
