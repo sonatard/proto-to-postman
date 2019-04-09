@@ -1,16 +1,19 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
-	parser "github.com/gogo/pbparser"
-	"github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
+	"github.com/golang/protobuf/protoc-gen-go/descriptor"
+	"github.com/golang/protobuf/protoc-gen-go/generator"
+	"github.com/sonatard/proto-to-postman/parser"
 	"golang.org/x/xerrors"
 )
 
@@ -122,18 +125,25 @@ func createAPIParam(baseURL string, fds []*descriptor.FileDescriptorSet, headers
 		for _, protoFile := range fd.File {
 			for _, service := range protoFile.Service {
 				for _, rpc := range service.Method {
-					inputType, err := findInputType(*rpc.InputType, fds)
+					inputType, err := findInputType(rpc.GetInputType(), fds)
 					if err != nil {
 						return nil, xerrors.Errorf(": %w", err)
 					}
 
-					body := createBody(inputType)
+					bodyStruct := createBodyStruct(inputType)
+					v := reflect.New(bodyStruct).Interface()
+					b, err := json.Marshal(v)
+					if err != nil {
+						return nil, xerrors.Errorf(": %w", err)
+					}
+					var out bytes.Buffer
+					json.Indent(&out, b, "", "\t")
 
 					apiParam := &PostmanAPIParam{
 						BaseURL: baseURL,
-						Service: *service.Name,
-						Method:  *rpc.Name,
-						Body:    body,
+						Service: service.GetName(),
+						Method:  rpc.GetName(),
+						Body:    out.String(),
 						Headers: headers,
 					}
 
@@ -150,7 +160,7 @@ func findInputType(inputTypeName string, fds []*descriptor.FileDescriptorSet) (*
 	for _, fd := range fds {
 		for _, protoFile := range fd.File {
 			for _, message := range protoFile.MessageType {
-				fullMessage := strings.Join([]string{"", *protoFile.Package, *message.Name}, ".")
+				fullMessage := strings.Join([]string{"", protoFile.GetPackage(), message.GetName()}, ".")
 				if fullMessage == inputTypeName {
 					return message, nil
 				}
@@ -161,30 +171,51 @@ func findInputType(inputTypeName string, fds []*descriptor.FileDescriptorSet) (*
 	return nil, xerrors.Errorf("input type(%s) not found", inputTypeName)
 }
 
-// TODO: Fix dirty code
-//  1. Create body struct using reflect package and DescriptorProto.
-//  2. Convert body struct to body json.
-func createBody(msg *descriptor.DescriptorProto) string {
-	var jsonBody string
-	jsonBody += "{\n"
+func createBodyStruct(msg *descriptor.DescriptorProto) reflect.Type {
+	fields := make([]reflect.StructField, 0, len(msg.Field))
+
 	for _, field := range msg.Field {
-		jsonBody += fmt.Sprintf("\t\"%s\" : ", *field.Name)
-		if *field.Type == descriptor.FieldDescriptorProto_TYPE_STRING {
-			jsonBody += fmt.Sprintf("\"\"")
-		} else {
-			jsonBody += fmt.Sprintf("0")
+		f := reflect.StructField{
+			Name: generator.CamelCase(field.GetName()),
+			Type: createReflectType(field.GetType()),
+			Tag:  reflect.StructTag(fmt.Sprintf(`json:"%s"`, field.GetJsonName())),
 		}
-		jsonBody += ",\n"
+
+		fields = append(fields, f)
 	}
 
-	if jsonBody[len(jsonBody)-2:] == ",\n" {
-		jsonBody = jsonBody[:len(jsonBody)-2] + "\n"
-	}
-	jsonBody += "}\n"
+	return reflect.StructOf(fields)
+}
 
-	if jsonBody == "{\n}\n" {
-		jsonBody = "{}\n"
+func createReflectType(t descriptor.FieldDescriptorProto_Type) reflect.Type {
+	switch t {
+	case descriptor.FieldDescriptorProto_TYPE_DOUBLE:
+		var v float64
+		return reflect.TypeOf(v)
+	case descriptor.FieldDescriptorProto_TYPE_FLOAT:
+		var v float32
+		return reflect.TypeOf(v)
+	case descriptor.FieldDescriptorProto_TYPE_INT64, descriptor.FieldDescriptorProto_TYPE_SINT64, descriptor.FieldDescriptorProto_TYPE_SFIXED64:
+		var v int64
+		return reflect.TypeOf(v)
+	case descriptor.FieldDescriptorProto_TYPE_UINT64, descriptor.FieldDescriptorProto_TYPE_FIXED64:
+		var v uint64
+		return reflect.TypeOf(v)
+	case descriptor.FieldDescriptorProto_TYPE_INT32, descriptor.FieldDescriptorProto_TYPE_SINT32, descriptor.FieldDescriptorProto_TYPE_SFIXED32, descriptor.FieldDescriptorProto_TYPE_ENUM:
+		var v int32
+		return reflect.TypeOf(v)
+	case descriptor.FieldDescriptorProto_TYPE_UINT32, descriptor.FieldDescriptorProto_TYPE_FIXED32:
+		var v uint32
+		return reflect.TypeOf(v)
+	case descriptor.FieldDescriptorProto_TYPE_BOOL:
+		var v bool
+		return reflect.TypeOf(v)
+	case descriptor.FieldDescriptorProto_TYPE_STRING:
+		var v string
+		return reflect.TypeOf(v)
+
 	}
 
-	return jsonBody
+	var v string
+	return reflect.TypeOf(v)
 }
