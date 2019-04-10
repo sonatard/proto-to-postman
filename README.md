@@ -90,7 +90,6 @@ https://cloud.google.com/endpoints/docs/grpc-service-config/reference/rpc/google
 
 ## Limitation
 
-- Only supports Postman v2.1.0 scheme
-- Supports to create only basic type fields of body
-- Not Supports to work on Windows.
+- Only supported for Postman v2.1.0 scheme
+- Not Supported on Windows.
 
