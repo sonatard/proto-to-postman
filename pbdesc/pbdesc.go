@@ -1,4 +1,4 @@
-package pb
+package pbdesc
 
 import (
 	"bytes"
@@ -13,11 +13,9 @@ import (
 	"google.golang.org/genproto/googleapis/api/annotations"
 )
 
-type FileDescriptors struct {
-	Set []*desc.FileDescriptor
-}
+type ProtoDescriptor struct{}
 
-func (f *FileDescriptors) BodyMsgTypeNameByHTTPRule(inputType *desc.MessageDescriptor, rule *annotations.HttpRule) (*desc.MessageDescriptor, error) {
+func (f *ProtoDescriptor) BodyMsgTypeNameByHTTPRule(inputType *desc.MessageDescriptor, rule *annotations.HttpRule) (*desc.MessageDescriptor, error) {
 	body := rule.GetBody()
 	if body == "" || body == "*" {
 		return inputType, nil
@@ -32,7 +30,7 @@ func (f *FileDescriptors) BodyMsgTypeNameByHTTPRule(inputType *desc.MessageDescr
 	return nil, xerrors.Errorf("field name(%s) not found", body)
 }
 
-func (f *FileDescriptors) JSONBody(bodyMsgType *desc.MessageDescriptor) (string, error) {
+func (f *ProtoDescriptor) JSONBody(bodyMsgType *desc.MessageDescriptor) (string, error) {
 	body, err := f.BodyStruct(bodyMsgType)
 	if err != nil {
 		return "", xerrors.Errorf(": %w", err)
@@ -52,7 +50,7 @@ func (f *FileDescriptors) JSONBody(bodyMsgType *desc.MessageDescriptor) (string,
 	return out.String(), nil
 }
 
-func (f *FileDescriptors) BodyStruct(msg *desc.MessageDescriptor) (interface{}, error) {
+func (f *ProtoDescriptor) BodyStruct(msg *desc.MessageDescriptor) (interface{}, error) {
 	fields := make([]reflect.StructField, 0, len(msg.GetFields()))
 
 	for _, field := range msg.GetFields() {

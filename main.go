@@ -36,8 +36,8 @@ func run(files []string, importPaths []string, configName, baseURL string, heade
 		return xerrors.Errorf("Unable to parse pb file: %v \n", err)
 	}
 
-	apiParamBuilder := NewAPIParamsBuilder(baseURL, headers, fds)
-	apiParams, err := apiParamBuilder.Build()
+	apiParamBuilder := NewAPIParamsBuilder(baseURL, headers)
+	apiParams, err := apiParamBuilder.Build(fds)
 	if err != nil {
 		return xerrors.Errorf(": %w", err)
 	}
