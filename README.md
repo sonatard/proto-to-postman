@@ -91,5 +91,4 @@ https://cloud.google.com/endpoints/docs/grpc-service-config/reference/rpc/google
 ## Limitation
 
 - Only supported for Postman v2.1.0 scheme
-- Not Supported on Windows.
 

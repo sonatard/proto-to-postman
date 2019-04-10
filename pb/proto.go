@@ -5,60 +5,35 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/golang/protobuf/protoc-gen-go/descriptor"
 	"github.com/golang/protobuf/protoc-gen-go/generator"
+	"github.com/jhump/protoreflect/desc"
 	"golang.org/x/xerrors"
 	"google.golang.org/genproto/googleapis/api/annotations"
 )
 
 type FileDescriptors struct {
-	Set []*descriptor.FileDescriptorSet
+	Set []*desc.FileDescriptor
 }
 
-func (f *FileDescriptors) MessageFromName(msgName string) (*descriptor.DescriptorProto, error) {
-	for _, fd := range f.Set {
-		for _, protoFile := range fd.GetFile() {
-			for _, message := range protoFile.GetMessageType() {
-				fullMessage := strings.Join([]string{"", protoFile.GetPackage(), message.GetName()}, ".")
-				if fullMessage == msgName {
-					return message, nil
-				}
-			}
-		}
-	}
-
-	return nil, xerrors.Errorf("input type(%s) not found", msgName)
-}
-
-func (f *FileDescriptors) BodyMsgTypeNameByHTTPRule(inputTypeName string, rule *annotations.HttpRule) (string, error) {
+func (f *FileDescriptors) BodyMsgTypeNameByHTTPRule(inputType *desc.MessageDescriptor, rule *annotations.HttpRule) (*desc.MessageDescriptor, error) {
 	body := rule.GetBody()
 	if body == "" || body == "*" {
-		return inputTypeName, nil
+		return inputType, nil
 	}
 
-	req, err := f.MessageFromName(inputTypeName)
-	if err != nil {
-		return "", xerrors.Errorf(": %w", err)
-	}
-
-	for _, field := range req.GetField() {
+	for _, field := range inputType.GetFields() {
 		if field.GetName() == body {
-			return field.GetTypeName(), nil
+			return field.GetMessageType(), nil
 		}
 	}
 
-	return "", xerrors.Errorf("field name(%s) not found", body)
+	return nil, xerrors.Errorf("field name(%s) not found", body)
 }
 
-func (f *FileDescriptors) JSONBody(bodyMsgType string) (string, error) {
-	inputType, err := f.MessageFromName(bodyMsgType)
-	if err != nil {
-		return "", xerrors.Errorf(": %w", err)
-	}
-
-	body, err := f.BodyStruct(inputType)
+func (f *FileDescriptors) JSONBody(bodyMsgType *desc.MessageDescriptor) (string, error) {
+	body, err := f.BodyStruct(bodyMsgType)
 	if err != nil {
 		return "", xerrors.Errorf(": %w", err)
 	}
@@ -77,18 +52,13 @@ func (f *FileDescriptors) JSONBody(bodyMsgType string) (string, error) {
 	return out.String(), nil
 }
 
-func (f *FileDescriptors) BodyStruct(msg *descriptor.DescriptorProto) (interface{}, error) {
-	fields := make([]reflect.StructField, 0, len(msg.Field))
+func (f *FileDescriptors) BodyStruct(msg *desc.MessageDescriptor) (interface{}, error) {
+	fields := make([]reflect.StructField, 0, len(msg.GetFields()))
 
-	for _, field := range msg.GetField() {
+	for _, field := range msg.GetFields() {
 		var t reflect.Type
 		if field.GetType() == descriptor.FieldDescriptorProto_TYPE_MESSAGE {
-			inputType, err := f.MessageFromName(field.GetTypeName())
-			if err != nil {
-				return nil, xerrors.Errorf(": %w", err)
-			}
-
-			body, err := f.BodyStruct(inputType)
+			body, err := f.BodyStruct(field.GetMessageType())
 			if err != nil {
 				return nil, xerrors.Errorf(": %w", err)
 			}
@@ -101,7 +71,7 @@ func (f *FileDescriptors) BodyStruct(msg *descriptor.DescriptorProto) (interface
 		f := reflect.StructField{
 			Name: generator.CamelCase(field.GetName()),
 			Type: t,
-			Tag:  reflect.StructTag(fmt.Sprintf(`json:"%s"`, field.GetJsonName())),
+			Tag:  reflect.StructTag(fmt.Sprintf(`json:"%s"`, field.GetJSONName())),
 		}
 
 		fields = append(fields, f)

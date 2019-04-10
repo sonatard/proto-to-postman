@@ -5,7 +5,7 @@ import (
 	"path"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/protoc-gen-go/descriptor"
+	"github.com/jhump/protoreflect/desc"
 	"github.com/sonatard/proto-to-postman/pb"
 	"github.com/sonatard/proto-to-postman/postman"
 	"golang.org/x/xerrors"
@@ -18,7 +18,7 @@ type apiParamsBuilder struct {
 	fileDescriptors *pb.FileDescriptors
 }
 
-func NewAPIParamsBuilder(baseURL string, headers []*postman.HeaderParam, set []*descriptor.FileDescriptorSet) *apiParamsBuilder {
+func NewAPIParamsBuilder(baseURL string, headers []*postman.HeaderParam, set []*desc.FileDescriptor) *apiParamsBuilder {
 	return &apiParamsBuilder{
 		baseURL: baseURL,
 		headers: headers,
@@ -31,16 +31,14 @@ func NewAPIParamsBuilder(baseURL string, headers []*postman.HeaderParam, set []*
 func (a *apiParamsBuilder) Build() ([]*postman.APIParam, error) {
 	var apiParams []*postman.APIParam
 	for _, fd := range a.fileDescriptors.Set {
-		for _, protoFile := range fd.GetFile() {
-			for _, service := range protoFile.GetService() {
-				for _, method := range service.GetMethod() {
-					params, err := a.build(method, service)
-					if err != nil {
-						return nil, xerrors.Errorf(": %w", err)
-					}
-
-					apiParams = append(apiParams, params...)
+		for _, service := range fd.GetServices() {
+			for _, method := range service.GetMethods() {
+				params, err := a.build(method, service)
+				if err != nil {
+					return nil, xerrors.Errorf(": %w", err)
 				}
+
+				apiParams = append(apiParams, params...)
 			}
 		}
 	}
@@ -48,7 +46,7 @@ func (a *apiParamsBuilder) Build() ([]*postman.APIParam, error) {
 	return apiParams, nil
 }
 
-func (a *apiParamsBuilder) build(method *descriptor.MethodDescriptorProto, service *descriptor.ServiceDescriptorProto) ([]*postman.APIParam, error) {
+func (a *apiParamsBuilder) build(method *desc.MethodDescriptor, service *desc.ServiceDescriptor) ([]*postman.APIParam, error) {
 	opts := method.GetOptions()
 
 	// Not has Extension
@@ -80,7 +78,7 @@ func (a *apiParamsBuilder) build(method *descriptor.MethodDescriptorProto, servi
 	return apiParams, nil
 }
 
-func (a *apiParamsBuilder) apiParamByMethod(method *descriptor.MethodDescriptorProto, service *descriptor.ServiceDescriptorProto) (*postman.APIParam, error) {
+func (a *apiParamsBuilder) apiParamByMethod(method *desc.MethodDescriptor, service *desc.ServiceDescriptor) (*postman.APIParam, error) {
 	jsonBody, err := a.fileDescriptors.JSONBody(method.GetInputType())
 	if err != nil {
 		return nil, xerrors.Errorf(": %w", err)
@@ -95,11 +93,11 @@ func (a *apiParamsBuilder) apiParamByMethod(method *descriptor.MethodDescriptorP
 	}, nil
 }
 
-func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputTypeName string) ([]*postman.APIParam, error) {
+func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputType *desc.MessageDescriptor) ([]*postman.APIParam, error) {
 	var apiParams []*postman.APIParam
 
 	if endpoint := newEndpoint(rule); endpoint != nil {
-		bodyMsgTypeName, err := a.fileDescriptors.BodyMsgTypeNameByHTTPRule(inputTypeName, rule)
+		bodyMsgTypeName, err := a.fileDescriptors.BodyMsgTypeNameByHTTPRule(inputType, rule)
 		if err != nil {
 			return nil, xerrors.Errorf(": %w", err)
 		}
@@ -122,7 +120,7 @@ func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputT
 
 	for _, r := range rule.GetAdditionalBindings() {
 		if endpoint := newEndpoint(r); endpoint != nil {
-			bodyMsgTypeName, err := a.fileDescriptors.BodyMsgTypeNameByHTTPRule(inputTypeName, r)
+			bodyMsgTypeName, err := a.fileDescriptors.BodyMsgTypeNameByHTTPRule(inputType, r)
 			if err != nil {
 				return nil, xerrors.Errorf(": %w", err)
 			}
