@@ -2,6 +2,7 @@ package postman
 
 import (
 	"path"
+	"strings"
 )
 
 type Postman struct {
@@ -54,8 +55,7 @@ type ProtocolProfileBehavior struct {
 type APIParam struct {
 	BaseURL    string
 	HTTPMethod string
-	Service    string
-	Method     string
+	Path       string
 	Body       string
 	Headers    []*HeaderParam
 }
@@ -78,7 +78,6 @@ func Build(configName string, apis []*APIParam) *Postman {
 }
 
 func BuildItem(api *APIParam) Item {
-	apiName := path.Join(api.Service, api.Method)
 	var headers []Header
 	for _, h := range api.Headers {
 		header := NewHeader(h.Key, h.Value)
@@ -86,8 +85,8 @@ func BuildItem(api *APIParam) Item {
 	}
 
 	body := NewBody(api.Body)
-	url := NewURL(api.BaseURL, []string{api.Service, api.Method})
-	return NewItem(apiName, api.HTTPMethod, headers, body, url)
+	url := NewURL(api.BaseURL, api.Path)
+	return NewItem(api.Path, api.HTTPMethod, headers, body, url)
 }
 
 func NewHeader(key string, value string) Header {
@@ -106,12 +105,21 @@ func NewBody(value string) Body {
 	}
 }
 
-func NewURL(host string, paths []string) URL {
-	all := append([]string{host}, paths...)
+func NewURL(host string, urlPath string) URL {
+	var ps []string
+	paths := strings.Split(urlPath, "/")
+	for i := range paths {
+		p := paths[i]
+		if p != "" {
+			ps = append(ps, p)
+		}
+	}
+
+	all := append([]string{host}, ps...)
 	return URL{
 		Raw:  path.Join(all...),
 		Host: []string{host},
-		Path: paths,
+		Path: ps,
 	}
 }
 func NewItem(apiName string, httpMethod string, header []Header, body Body, url URL) Item {

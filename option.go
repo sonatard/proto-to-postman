@@ -23,7 +23,7 @@ func parseOption() (*Option, []string, error) {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `
 Usage of %s:
-   %s [OPTIONS] [proto files...]
+   %s [OPTIONS] [pb files...]
 Options\n`, os.Args[0], os.Args[0])
 		flag.PrintDefaults()
 	}
@@ -33,8 +33,8 @@ Options\n`, os.Args[0], os.Args[0])
 	}
 
 	configName := flag.String("n", "", `config name`)
-	protoImportOpt := flag.String("i", dir, `proto files import directory`)
-	baseURLOpt := flag.String("b", "", `request API Base URL e.g) -b https://example.com/`)
+	protoImportOpt := flag.String("i", dir, `pb files import directory`)
+	baseURLOpt := flag.String("b", "", `request API Base Path e.g) -b https://example.com/`)
 	headerOpts := flag.String("h", "", `request headerOpts e.g) -h Content-Type:application/json,XXXX:ABC`)
 	flag.Parse()
 

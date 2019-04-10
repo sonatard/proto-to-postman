@@ -22,7 +22,7 @@ func main() {
 
 	w := os.Stdout
 	if err := run(paths, opt.importPaths, opt.configName, opt.baseURL, opt.headers, w); err != nil {
-		fmt.Fprintf(os.Stderr, "%v", err)
+		fmt.Fprintf(os.Stderr, "%+v", err)
 		os.Exit(1)
 	}
 }
@@ -32,7 +32,7 @@ func run(files []string, importPaths []string, configName, baseURL string, heade
 	for _, file := range files {
 		fd, err := parser.ParseFile(file, importPaths...)
 		if err != nil {
-			return xerrors.Errorf("Unable to parse proto file: %v \n", err)
+			return xerrors.Errorf("Unable to parse pb file: %v \n", err)
 		}
 
 		fds = append(fds, fd)
