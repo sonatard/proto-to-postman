@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"net/http"
 	"path"
 
@@ -15,22 +13,24 @@ import (
 )
 
 type apiParamsBuilder struct {
-	baseURL string
-	headers []*postman.HeaderParam
-	fds     []*descriptor.FileDescriptorSet
+	baseURL         string
+	headers         []*postman.HeaderParam
+	fileDescriptors *pb.FileDescriptors
 }
 
-func NewAPIParamsBuilder(baseURL string, headers []*postman.HeaderParam, fds []*descriptor.FileDescriptorSet) *apiParamsBuilder {
+func NewAPIParamsBuilder(baseURL string, headers []*postman.HeaderParam, set []*descriptor.FileDescriptorSet) *apiParamsBuilder {
 	return &apiParamsBuilder{
 		baseURL: baseURL,
 		headers: headers,
-		fds:     fds,
+		fileDescriptors: &pb.FileDescriptors{
+			Set: set,
+		},
 	}
 }
 
 func (a *apiParamsBuilder) Build() ([]*postman.APIParam, error) {
 	var apiParams []*postman.APIParam
-	for _, fd := range a.fds {
+	for _, fd := range a.fileDescriptors.Set {
 		for _, protoFile := range fd.GetFile() {
 			for _, service := range protoFile.GetService() {
 				for _, method := range service.GetMethod() {
@@ -50,6 +50,8 @@ func (a *apiParamsBuilder) Build() ([]*postman.APIParam, error) {
 
 func (a *apiParamsBuilder) build(method *descriptor.MethodDescriptorProto, service *descriptor.ServiceDescriptorProto) ([]*postman.APIParam, error) {
 	opts := method.GetOptions()
+
+	// Not has Extension
 	if !proto.HasExtension(opts, annotations.E_Http) {
 		apiParam, err := a.apiParamByMethod(method, service)
 		if err != nil {
@@ -59,6 +61,7 @@ func (a *apiParamsBuilder) build(method *descriptor.MethodDescriptorProto, servi
 		return []*postman.APIParam{apiParam}, nil
 	}
 
+	// Has Extension
 	ext, err := proto.GetExtension(opts, annotations.E_Http)
 	if err != nil {
 		return nil, xerrors.Errorf(": %w", err)
@@ -77,33 +80,8 @@ func (a *apiParamsBuilder) build(method *descriptor.MethodDescriptorProto, servi
 	return apiParams, nil
 }
 
-func (a *apiParamsBuilder) jsonBody(bodyMsgType string) (string, error) {
-	inputType, err := pb.MessageFromName(bodyMsgType, a.fds)
-	if err != nil {
-		return "", xerrors.Errorf(": %w", err)
-	}
-
-	body, err := pb.BodyStruct(inputType, a.fds)
-	if err != nil {
-		return "", xerrors.Errorf(": %w", err)
-	}
-
-	b, err := json.Marshal(body)
-	if err != nil {
-		return "", xerrors.Errorf(": %w", err)
-	}
-
-	var out bytes.Buffer
-	err = json.Indent(&out, b, "", "\t")
-	if err != nil {
-		return "", xerrors.Errorf(": %w", err)
-	}
-
-	return out.String(), nil
-}
-
 func (a *apiParamsBuilder) apiParamByMethod(method *descriptor.MethodDescriptorProto, service *descriptor.ServiceDescriptorProto) (*postman.APIParam, error) {
-	jsonBody, err := a.jsonBody(method.GetInputType())
+	jsonBody, err := a.fileDescriptors.JSONBody(method.GetInputType())
 	if err != nil {
 		return nil, xerrors.Errorf(": %w", err)
 	}
@@ -117,16 +95,16 @@ func (a *apiParamsBuilder) apiParamByMethod(method *descriptor.MethodDescriptorP
 	}, nil
 }
 
-func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputType string) ([]*postman.APIParam, error) {
+func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputTypeName string) ([]*postman.APIParam, error) {
 	var apiParams []*postman.APIParam
 
-	bodyMsgType, err := a.bodyMsgTypeByHTTPRule(rule, inputType)
+	bodyMsgTypeName, err := a.fileDescriptors.BodyMsgTypeNameByHTTPRule(inputTypeName, rule)
 	if err != nil {
 		return nil, xerrors.Errorf(": %w", err)
 	}
 
 	if endpoint := newEndpoint(rule); endpoint != nil {
-		jsonBody, err := a.jsonBody(bodyMsgType)
+		jsonBody, err := a.fileDescriptors.JSONBody(bodyMsgTypeName)
 		if err != nil {
 			return nil, xerrors.Errorf(": %w", err)
 		}
@@ -134,21 +112,22 @@ func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputT
 		apiParam := &postman.APIParam{
 			BaseURL:    a.baseURL,
 			HTTPMethod: endpoint.method,
-			Path:       endpoint.url,
+			Path:       endpoint.path,
 			Body:       jsonBody,
 			Headers:    a.headers,
 		}
+
 		apiParams = append(apiParams, apiParam)
 	}
 
 	for _, r := range rule.GetAdditionalBindings() {
 		if endpoint := newEndpoint(r); endpoint != nil {
-			bodyMsgType, err := a.bodyMsgTypeByHTTPRule(rule, inputType)
+			bodyMsgTypeName, err := a.fileDescriptors.BodyMsgTypeNameByHTTPRule(inputTypeName, rule)
 			if err != nil {
 				return nil, xerrors.Errorf(": %w", err)
 			}
 
-			jsonBody, err := a.jsonBody(bodyMsgType)
+			jsonBody, err := a.fileDescriptors.JSONBody(bodyMsgTypeName)
 			if err != nil {
 				return nil, xerrors.Errorf(": %w", err)
 			}
@@ -156,7 +135,7 @@ func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputT
 			apiParam := &postman.APIParam{
 				BaseURL:    a.baseURL,
 				HTTPMethod: endpoint.method,
-				Path:       endpoint.url,
+				Path:       endpoint.path,
 				Body:       jsonBody,
 				Headers:    a.headers,
 			}
@@ -168,30 +147,9 @@ func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputT
 	return apiParams, nil
 }
 
-func (a *apiParamsBuilder) bodyMsgTypeByHTTPRule(rule *annotations.HttpRule, inputType string) (string, error) {
-	body := rule.GetBody()
-	if body == "" || body == "*" {
-		return inputType, nil
-	}
-
-	req, err := pb.MessageFromName(inputType, a.fds)
-	if err != nil {
-		return "", xerrors.Errorf(": %w", err)
-	}
-
-	var bodyMsgType string
-	for _, field := range req.GetField() {
-		if field.GetName() == body {
-			bodyMsgType = field.GetTypeName()
-		}
-	}
-
-	return bodyMsgType, nil
-}
-
 type endpoint struct {
 	method string
-	url    string
+	path   string
 }
 
 func newEndpoint(rule *annotations.HttpRule) *endpoint {
