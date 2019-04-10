@@ -98,12 +98,12 @@ func (a *apiParamsBuilder) apiParamByMethod(method *descriptor.MethodDescriptorP
 func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputTypeName string) ([]*postman.APIParam, error) {
 	var apiParams []*postman.APIParam
 
-	bodyMsgTypeName, err := a.fileDescriptors.BodyMsgTypeNameByHTTPRule(inputTypeName, rule)
-	if err != nil {
-		return nil, xerrors.Errorf(": %w", err)
-	}
-
 	if endpoint := newEndpoint(rule); endpoint != nil {
+		bodyMsgTypeName, err := a.fileDescriptors.BodyMsgTypeNameByHTTPRule(inputTypeName, rule)
+		if err != nil {
+			return nil, xerrors.Errorf(": %w", err)
+		}
+
 		jsonBody, err := a.fileDescriptors.JSONBody(bodyMsgTypeName)
 		if err != nil {
 			return nil, xerrors.Errorf(": %w", err)
@@ -122,7 +122,7 @@ func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputT
 
 	for _, r := range rule.GetAdditionalBindings() {
 		if endpoint := newEndpoint(r); endpoint != nil {
-			bodyMsgTypeName, err := a.fileDescriptors.BodyMsgTypeNameByHTTPRule(inputTypeName, rule)
+			bodyMsgTypeName, err := a.fileDescriptors.BodyMsgTypeNameByHTTPRule(inputTypeName, r)
 			if err != nil {
 				return nil, xerrors.Errorf(": %w", err)
 			}
