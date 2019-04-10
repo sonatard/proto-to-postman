@@ -59,13 +59,13 @@ service UserService {
   rpc GetUser(GetUserRequest) returns (GetUserResponse){
     option (google.api.http) = {
        post: "/UserService/GetUser"
-       body: "*"
-       additional_bindings {
-        post: "/UserService/GetUser2"
        body: "user"
+       additional_bindings {
+         post: "/UserService/GetUser2"
+         body: "*"
        }
        additional_bindings {
-        get: "/UserService/GetUser"
+         get: "/UserService/GetUser"
        }
     };
   };
