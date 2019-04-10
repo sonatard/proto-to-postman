@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/golang/protobuf/protoc-gen-go/descriptor"
-	"github.com/sonatard/proto-to-postman/parser"
+	"github.com/sonatard/pbparser"
 	"github.com/sonatard/proto-to-postman/postman"
 	"golang.org/x/xerrors"
 )
@@ -30,7 +30,7 @@ func main() {
 func run(files []string, importPaths []string, configName, baseURL string, headers []*postman.HeaderParam, w io.Writer) error {
 	fds := make([]*descriptor.FileDescriptorSet, 0, len(files))
 	for _, file := range files {
-		fd, err := parser.ParseFile(file, importPaths...)
+		fd, err := pbparser.ParseFile(file, importPaths...)
 		if err != nil {
 			return xerrors.Errorf("Unable to parse pb file: %v \n", err)
 		}
