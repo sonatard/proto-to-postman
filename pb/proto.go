@@ -10,28 +10,45 @@ import (
 	"golang.org/x/xerrors"
 )
 
-func InputTypeFromName(inputTypeName string, fds []*descriptor.FileDescriptorSet) (*descriptor.DescriptorProto, error) {
+func MessageFromName(msg string, fds []*descriptor.FileDescriptorSet) (*descriptor.DescriptorProto, error) {
 	for _, fd := range fds {
-		for _, protoFile := range fd.File {
-			for _, message := range protoFile.MessageType {
+		for _, protoFile := range fd.GetFile() {
+			for _, message := range protoFile.GetMessageType() {
 				fullMessage := strings.Join([]string{"", protoFile.GetPackage(), message.GetName()}, ".")
-				if fullMessage == inputTypeName {
+				if fullMessage == msg {
 					return message, nil
 				}
 			}
 		}
 	}
 
-	return nil, xerrors.Errorf("input type(%s) not found", inputTypeName)
+	return nil, xerrors.Errorf("input type(%s) not found", msg)
 }
 
-func BodyStruct(msg *descriptor.DescriptorProto) interface{} {
+func BodyStruct(msg *descriptor.DescriptorProto, fds []*descriptor.FileDescriptorSet) (interface{}, error) {
 	fields := make([]reflect.StructField, 0, len(msg.Field))
 
-	for _, field := range msg.Field {
+	for _, field := range msg.GetField() {
+		var t reflect.Type
+		if field.GetType() == descriptor.FieldDescriptorProto_TYPE_MESSAGE {
+			msg, err := MessageFromName(field.GetTypeName(), fds)
+			if err != nil {
+				return nil, xerrors.Errorf(": %w", err)
+			}
+
+			body, err := BodyStruct(msg, fds)
+			if err != nil {
+				return nil, xerrors.Errorf(": %w", err)
+			}
+
+			t = reflect.TypeOf(body)
+		} else {
+			t = reflectType(field.GetType())
+		}
+
 		f := reflect.StructField{
 			Name: generator.CamelCase(field.GetName()),
-			Type: reflectType(field.GetType()),
+			Type: t,
 			Tag:  reflect.StructTag(fmt.Sprintf(`json:"%s"`, field.GetJsonName())),
 		}
 
@@ -40,7 +57,7 @@ func BodyStruct(msg *descriptor.DescriptorProto) interface{} {
 
 	bodyStruct := reflect.StructOf(fields)
 
-	return reflect.New(bodyStruct).Interface()
+	return reflect.New(bodyStruct).Elem().Interface(), nil
 }
 
 func reflectType(t descriptor.FieldDescriptorProto_Type) reflect.Type {
@@ -69,7 +86,6 @@ func reflectType(t descriptor.FieldDescriptorProto_Type) reflect.Type {
 	case descriptor.FieldDescriptorProto_TYPE_STRING:
 		var v string
 		return reflect.TypeOf(v)
-
 	}
 
 	var v string

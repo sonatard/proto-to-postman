@@ -21,9 +21,76 @@ proto-to-postman \
     api/v1/*.proto
 ```
 
+
+## Support proto file format
+
+### No annotation
+
+Create POST method`{URL}/{SERVICE_NAME}/{METHOD_NAME}`.
+
+```proto
+import "google/api/annotations.proto";
+
+service UserService {
+  rpc GetUser(GetUserRequest) returns (GetUserResponse){};
+}
+
+message GetUserRequest {
+    User user = 1;
+}
+
+message GetUserResponse {}
+
+message User {
+  string user_id= 1;
+  string user_name = 2;
+
+}
+```
+
+### google.api.http annotation
+
+Possible to create multi APIs `{URL}/{AnnotationValue}`.
+
+```proto
+import "google/api/annotations.proto";
+
+service UserService {
+  rpc GetUser(GetUserRequest) returns (GetUserResponse){
+    option (google.api.http) = {
+       post: "/UserService/GetUser"
+       body: "*"
+       additional_bindings {
+        post: "/UserService/GetUser2"
+       body: "user"
+       }
+       additional_bindings {
+        get: "/UserService/GetUser"
+       }
+    };
+  };
+}
+
+message GetUserRequest {
+    User user = 1;
+}
+
+message GetUserResponse {}
+
+message User {
+  string user_id= 1;
+  string user_name = 2;
+
+}
+```
+
+google.api.http spec is here.
+
+https://cloud.google.com/endpoints/docs/grpc-service-config/reference/rpc/google.api#google.api.HttpRule
+
 ## Limitation
 
-- Only supports POST Method
 - Only supports Postman v2.1.0 scheme
-- Support to create only basic type fields of body
+- Supports to create only basic type fields of body
+- Not Supports to work on Windows.
 

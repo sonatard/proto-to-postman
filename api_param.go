@@ -31,9 +31,9 @@ func NewAPIParamsBuilder(baseURL string, headers []*postman.HeaderParam, fds []*
 func (a *apiParamsBuilder) Build() ([]*postman.APIParam, error) {
 	var apiParams []*postman.APIParam
 	for _, fd := range a.fds {
-		for _, protoFile := range fd.File {
-			for _, service := range protoFile.Service {
-				for _, method := range service.Method {
+		for _, protoFile := range fd.GetFile() {
+			for _, service := range protoFile.GetService() {
+				for _, method := range service.GetMethod() {
 					params, err := a.build(method, service)
 					if err != nil {
 						return nil, xerrors.Errorf(": %w", err)
@@ -49,16 +49,14 @@ func (a *apiParamsBuilder) Build() ([]*postman.APIParam, error) {
 }
 
 func (a *apiParamsBuilder) build(method *descriptor.MethodDescriptorProto, service *descriptor.ServiceDescriptorProto) ([]*postman.APIParam, error) {
-	jsonBody, err := a.jsonBody(method.GetInputType())
-	if err != nil {
-		return nil, xerrors.Errorf(": %w", err)
-	}
-
 	opts := method.GetOptions()
 	if !proto.HasExtension(opts, annotations.E_Http) {
-		return []*postman.APIParam{
-			a.apiParamByMethod(method, service, jsonBody),
-		}, nil
+		apiParam, err := a.apiParamByMethod(method, service)
+		if err != nil {
+			return nil, xerrors.Errorf(": %w", err)
+		}
+
+		return []*postman.APIParam{apiParam}, nil
 	}
 
 	ext, err := proto.GetExtension(opts, annotations.E_Http)
@@ -71,16 +69,25 @@ func (a *apiParamsBuilder) build(method *descriptor.MethodDescriptorProto, servi
 		return nil, xerrors.New("annotation extension assertion error")
 	}
 
-	return a.apiParamByHTTPRule(rule, jsonBody), nil
+	apiParams, err := a.apiParamByHTTPRule(rule, method.GetInputType())
+	if err != nil {
+		return nil, xerrors.Errorf(": %w", err)
+	}
+
+	return apiParams, nil
 }
 
-func (a *apiParamsBuilder) jsonBody(inputTypeString string) (string, error) {
-	inputType, err := pb.InputTypeFromName(inputTypeString, a.fds)
+func (a *apiParamsBuilder) jsonBody(bodyMsgType string) (string, error) {
+	inputType, err := pb.MessageFromName(bodyMsgType, a.fds)
 	if err != nil {
 		return "", xerrors.Errorf(": %w", err)
 	}
 
-	body := pb.BodyStruct(inputType)
+	body, err := pb.BodyStruct(inputType, a.fds)
+	if err != nil {
+		return "", xerrors.Errorf(": %w", err)
+	}
+
 	b, err := json.Marshal(body)
 	if err != nil {
 		return "", xerrors.Errorf(": %w", err)
@@ -95,37 +102,62 @@ func (a *apiParamsBuilder) jsonBody(inputTypeString string) (string, error) {
 	return out.String(), nil
 }
 
-func (a *apiParamsBuilder) apiParamByMethod(method *descriptor.MethodDescriptorProto, service *descriptor.ServiceDescriptorProto, out string) *postman.APIParam {
+func (a *apiParamsBuilder) apiParamByMethod(method *descriptor.MethodDescriptorProto, service *descriptor.ServiceDescriptorProto) (*postman.APIParam, error) {
+	jsonBody, err := a.jsonBody(method.GetInputType())
+	if err != nil {
+		return nil, xerrors.Errorf(": %w", err)
+	}
+
 	return &postman.APIParam{
 		BaseURL:    a.baseURL,
 		HTTPMethod: http.MethodPost,
 		Path:       "/" + path.Join(service.GetName(), method.GetName()),
-		Body:       out,
+		Body:       jsonBody,
 		Headers:    a.headers,
-	}
+	}, nil
 }
 
-func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, out string) []*postman.APIParam {
+func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputType string) ([]*postman.APIParam, error) {
 	var apiParams []*postman.APIParam
 
+	bodyMsgType, err := a.bodyMsgTypeByHTTPRule(rule, inputType)
+	if err != nil {
+		return nil, xerrors.Errorf(": %w", err)
+	}
+
 	if endpoint := newEndpoint(rule); endpoint != nil {
+		jsonBody, err := a.jsonBody(bodyMsgType)
+		if err != nil {
+			return nil, xerrors.Errorf(": %w", err)
+		}
+
 		apiParam := &postman.APIParam{
 			BaseURL:    a.baseURL,
 			HTTPMethod: endpoint.method,
 			Path:       endpoint.url,
-			Body:       out,
+			Body:       jsonBody,
 			Headers:    a.headers,
 		}
 		apiParams = append(apiParams, apiParam)
 	}
 
-	for _, r := range rule.AdditionalBindings {
+	for _, r := range rule.GetAdditionalBindings() {
 		if endpoint := newEndpoint(r); endpoint != nil {
+			bodyMsgType, err := a.bodyMsgTypeByHTTPRule(rule, inputType)
+			if err != nil {
+				return nil, xerrors.Errorf(": %w", err)
+			}
+
+			jsonBody, err := a.jsonBody(bodyMsgType)
+			if err != nil {
+				return nil, xerrors.Errorf(": %w", err)
+			}
+
 			apiParam := &postman.APIParam{
 				BaseURL:    a.baseURL,
 				HTTPMethod: endpoint.method,
 				Path:       endpoint.url,
-				Body:       out,
+				Body:       jsonBody,
 				Headers:    a.headers,
 			}
 
@@ -133,7 +165,28 @@ func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, out st
 		}
 	}
 
-	return apiParams
+	return apiParams, nil
+}
+
+func (a *apiParamsBuilder) bodyMsgTypeByHTTPRule(rule *annotations.HttpRule, inputType string) (string, error) {
+	body := rule.GetBody()
+	if body == "" || body == "*" {
+		return inputType, nil
+	}
+
+	req, err := pb.MessageFromName(inputType, a.fds)
+	if err != nil {
+		return "", xerrors.Errorf(": %w", err)
+	}
+
+	var bodyMsgType string
+	for _, field := range req.GetField() {
+		if field.GetName() == body {
+			bodyMsgType = field.GetTypeName()
+		}
+	}
+
+	return bodyMsgType, nil
 }
 
 type endpoint struct {
@@ -141,21 +194,24 @@ type endpoint struct {
 	url    string
 }
 
-func newEndpoint(opts *annotations.HttpRule) *endpoint {
-	if opts == nil {
+func newEndpoint(rule *annotations.HttpRule) *endpoint {
+	if rule == nil {
 		return nil
 	}
-	switch opt := opts.GetPattern().(type) {
+
+	var e *endpoint
+	switch opt := rule.GetPattern().(type) {
 	case *annotations.HttpRule_Get:
-		return &endpoint{"GET", opt.Get}
+		e = &endpoint{"GET", opt.Get}
 	case *annotations.HttpRule_Put:
-		return &endpoint{"PUT", opt.Put}
+		e = &endpoint{"PUT", opt.Put}
 	case *annotations.HttpRule_Post:
-		return &endpoint{"POST", opt.Post}
+		e = &endpoint{"POST", opt.Post}
 	case *annotations.HttpRule_Delete:
-		return &endpoint{"DELETE", opt.Delete}
+		e = &endpoint{"DELETE", opt.Delete}
 	case *annotations.HttpRule_Patch:
-		return &endpoint{"PATCH", opt.Patch}
+		e = &endpoint{"PATCH", opt.Patch}
 	}
-	return nil
+
+	return e
 }
