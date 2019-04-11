@@ -2,8 +2,6 @@
 
 proto-to-postman is a command line tool to create postman API import collection from `.proto`.
 
-proto-to-postman uses `protoc` command.
-
 ## Install
 
 ```console
