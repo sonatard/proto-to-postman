@@ -22,30 +22,6 @@ proto-to-postman \
 
 ## Support proto file format
 
-### No annotation
-
-Create POST method`{URL}/{SERVICE_NAME}/{METHOD_NAME}`.
-
-```proto
-import "google/api/annotations.proto";
-
-service UserService {
-  rpc GetUser(GetUserRequest) returns (GetUserResponse){};
-}
-
-message GetUserRequest {
-    User user = 1;
-}
-
-message GetUserResponse {}
-
-message User {
-  string user_id= 1;
-  string user_name = 2;
-
-}
-```
-
 ### google.api.http annotation
 
 Possible to create multi APIs `{URL}/{AnnotationValue}`.

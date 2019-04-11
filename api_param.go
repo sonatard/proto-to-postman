@@ -1,9 +1,6 @@
 package main
 
 import (
-	"net/http"
-	"path"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/jhump/protoreflect/desc"
 	"github.com/sonatard/proto-to-postman/pbdesc"
@@ -47,17 +44,10 @@ func (a *apiParamsBuilder) Build(fds []*desc.FileDescriptor) ([]*postman.APIPara
 func (a *apiParamsBuilder) build(method *desc.MethodDescriptor, service *desc.ServiceDescriptor) ([]*postman.APIParam, error) {
 	opts := method.GetOptions()
 
-	// Not has Extension
 	if !proto.HasExtension(opts, annotations.E_Http) {
-		apiParam, err := a.apiParamByMethod(method, service)
-		if err != nil {
-			return nil, xerrors.Errorf(": %w", err)
-		}
-
-		return []*postman.APIParam{apiParam}, nil
+		return []*postman.APIParam{}, nil
 	}
 
-	// Has Extension
 	ext, err := proto.GetExtension(opts, annotations.E_Http)
 	if err != nil {
 		return nil, xerrors.Errorf(": %w", err)
@@ -74,21 +64,6 @@ func (a *apiParamsBuilder) build(method *desc.MethodDescriptor, service *desc.Se
 	}
 
 	return apiParams, nil
-}
-
-func (a *apiParamsBuilder) apiParamByMethod(method *desc.MethodDescriptor, service *desc.ServiceDescriptor) (*postman.APIParam, error) {
-	jsonBody, err := a.pbdesc.JSONBody(method.GetInputType())
-	if err != nil {
-		return nil, xerrors.Errorf(": %w", err)
-	}
-
-	return &postman.APIParam{
-		BaseURL:    a.baseURL,
-		HTTPMethod: http.MethodPost,
-		Path:       "/" + path.Join(service.GetName(), method.GetName()),
-		Body:       jsonBody,
-		Headers:    a.headers,
-	}, nil
 }
 
 func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputType *desc.MessageDescriptor) ([]*postman.APIParam, error) {
