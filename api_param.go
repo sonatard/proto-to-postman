@@ -70,7 +70,7 @@ func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputT
 	var apiParams []*postman.APIParam
 
 	if endpoint := newEndpoint(rule); endpoint != nil {
-		bodyMsgType, err := a.pbdesc.BodyMsgTypeNameByHTTPRuleBody(inputType, rule)
+		bodyMsgType, err := a.pbdesc.BodyMsgTypeNameByHTTPRule(inputType, rule)
 		bodyNotFound := xerrors.Is(err, pbdesc.ErrBodyNotFound)
 		if err != nil && !bodyNotFound {
 			return nil, xerrors.Errorf(": %w", err)
@@ -97,7 +97,7 @@ func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputT
 
 	for _, r := range rule.GetAdditionalBindings() {
 		if endpoint := newEndpoint(r); endpoint != nil {
-			bodyMsgType, err := a.pbdesc.BodyMsgTypeNameByHTTPRuleBody(inputType, r)
+			bodyMsgType, err := a.pbdesc.BodyMsgTypeNameByHTTPRule(inputType, r)
 			bodyNotFound := xerrors.Is(err, pbdesc.ErrBodyNotFound)
 			if err != nil && !bodyNotFound {
 				return nil, xerrors.Errorf(": %w", err)
