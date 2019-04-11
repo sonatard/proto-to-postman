@@ -70,14 +70,18 @@ func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputT
 	var apiParams []*postman.APIParam
 
 	if endpoint := newEndpoint(rule); endpoint != nil {
-		bodyMsgTypeName, err := a.pbdesc.BodyMsgTypeNameByHTTPRule(inputType, rule)
-		if err != nil {
+		bodyMsgType, err := a.pbdesc.BodyMsgTypeNameByHTTPRuleBody(inputType, rule)
+		bodyNotFound := xerrors.Is(err, pbdesc.ErrBodyNotFound)
+		if err != nil && !bodyNotFound {
 			return nil, xerrors.Errorf(": %w", err)
 		}
 
-		jsonBody, err := a.pbdesc.JSONBody(bodyMsgTypeName)
-		if err != nil {
-			return nil, xerrors.Errorf(": %w", err)
+		var jsonBody string
+		if !bodyNotFound {
+			jsonBody, err = a.pbdesc.JSONBody(bodyMsgType)
+			if err != nil {
+				return nil, xerrors.Errorf(": %w", err)
+			}
 		}
 
 		apiParam := &postman.APIParam{
@@ -93,14 +97,18 @@ func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputT
 
 	for _, r := range rule.GetAdditionalBindings() {
 		if endpoint := newEndpoint(r); endpoint != nil {
-			bodyMsgTypeName, err := a.pbdesc.BodyMsgTypeNameByHTTPRule(inputType, r)
-			if err != nil {
+			bodyMsgType, err := a.pbdesc.BodyMsgTypeNameByHTTPRuleBody(inputType, r)
+			bodyNotFound := xerrors.Is(err, pbdesc.ErrBodyNotFound)
+			if err != nil && !bodyNotFound {
 				return nil, xerrors.Errorf(": %w", err)
 			}
 
-			jsonBody, err := a.pbdesc.JSONBody(bodyMsgTypeName)
-			if err != nil {
-				return nil, xerrors.Errorf(": %w", err)
+			var jsonBody string
+			if !bodyNotFound {
+				jsonBody, err = a.pbdesc.JSONBody(bodyMsgType)
+				if err != nil {
+					return nil, xerrors.Errorf(": %w", err)
+				}
 			}
 
 			apiParam := &postman.APIParam{

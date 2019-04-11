@@ -13,11 +13,17 @@ import (
 	"google.golang.org/genproto/googleapis/api/annotations"
 )
 
+var ErrBodyNotFound = xerrors.New("body not found in HTTP Rule annotation")
+
 type ProtoDescriptor struct{}
 
-func (f *ProtoDescriptor) BodyMsgTypeNameByHTTPRule(inputType *desc.MessageDescriptor, rule *annotations.HttpRule) (*desc.MessageDescriptor, error) {
+func (f *ProtoDescriptor) BodyMsgTypeNameByHTTPRuleBody(inputType *desc.MessageDescriptor, rule *annotations.HttpRule) (*desc.MessageDescriptor, error) {
 	body := rule.GetBody()
-	if body == "" || body == "*" {
+	if body == "" {
+		return nil, ErrBodyNotFound
+	}
+
+	if body == "*" {
 		return inputType, nil
 	}
 
