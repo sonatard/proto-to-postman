@@ -58,7 +58,7 @@ func (a *apiParamsBuilder) build(method *desc.MethodDescriptor, service *desc.Se
 		return nil, xerrors.New("annotation extension assertion error")
 	}
 
-	apiParams, err := a.apiParamByHTTPRule(rule, method.GetInputType())
+	apiParams, err := a.apiParamsByHTTPRule(rule, method.GetInputType())
 	if err != nil {
 		return nil, xerrors.Errorf(": %w", err)
 	}
@@ -66,64 +66,55 @@ func (a *apiParamsBuilder) build(method *desc.MethodDescriptor, service *desc.Se
 	return apiParams, nil
 }
 
-func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputType *desc.MessageDescriptor) ([]*postman.APIParam, error) {
+func (a *apiParamsBuilder) apiParamsByHTTPRule(rule *annotations.HttpRule, inputType *desc.MessageDescriptor) ([]*postman.APIParam, error) {
 	var apiParams []*postman.APIParam
 
-	if endpoint := newEndpoint(rule); endpoint != nil {
-		bodyMsgType, err := a.pbdesc.BodyMsgTypeNameByHTTPRule(inputType, rule)
-		bodyNotFound := xerrors.Is(err, pbdesc.ErrBodyNotFound)
-		if err != nil && !bodyNotFound {
+	apiParam, err := a.apiParamByHTTPRule(rule, inputType)
+	if err != nil {
+		return nil, xerrors.Errorf(": %w", err)
+	}
+
+	apiParams = append(apiParams, apiParam)
+
+	for _, r := range rule.GetAdditionalBindings() {
+		apiParam, err := a.apiParamByHTTPRule(r, inputType)
+		if err != nil {
 			return nil, xerrors.Errorf(": %w", err)
-		}
-
-		var jsonBody string
-		if !bodyNotFound {
-			jsonBody, err = a.pbdesc.JSONBody(bodyMsgType)
-			if err != nil {
-				return nil, xerrors.Errorf(": %w", err)
-			}
-		}
-
-		apiParam := &postman.APIParam{
-			BaseURL:    a.baseURL,
-			HTTPMethod: endpoint.method,
-			Path:       endpoint.path,
-			Body:       jsonBody,
-			Headers:    a.headers,
 		}
 
 		apiParams = append(apiParams, apiParam)
 	}
 
-	for _, r := range rule.GetAdditionalBindings() {
-		if endpoint := newEndpoint(r); endpoint != nil {
-			bodyMsgType, err := a.pbdesc.BodyMsgTypeNameByHTTPRule(inputType, r)
-			bodyNotFound := xerrors.Is(err, pbdesc.ErrBodyNotFound)
-			if err != nil && !bodyNotFound {
-				return nil, xerrors.Errorf(": %w", err)
-			}
+	return apiParams, nil
+}
 
-			var jsonBody string
-			if !bodyNotFound {
-				jsonBody, err = a.pbdesc.JSONBody(bodyMsgType)
-				if err != nil {
-					return nil, xerrors.Errorf(": %w", err)
-				}
-			}
+func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputType *desc.MessageDescriptor) (*postman.APIParam, error) {
+	endpoint, err := newEndpoint(rule)
+	if err != nil {
+		return nil, xerrors.Errorf(": %w", err)
+	}
 
-			apiParam := &postman.APIParam{
-				BaseURL:    a.baseURL,
-				HTTPMethod: endpoint.method,
-				Path:       endpoint.path,
-				Body:       jsonBody,
-				Headers:    a.headers,
-			}
+	bodyMsgType, err := a.pbdesc.BodyMsgTypeNameByHTTPRule(inputType, rule)
+	bodyNotFound := xerrors.Is(err, pbdesc.ErrBodyNotFound)
+	if err != nil && !bodyNotFound {
+		return nil, xerrors.Errorf(": %w", err)
+	}
 
-			apiParams = append(apiParams, apiParam)
+	var jsonBody string
+	if !bodyNotFound {
+		jsonBody, err = a.pbdesc.JSONBody(bodyMsgType)
+		if err != nil {
+			return nil, xerrors.Errorf(": %w", err)
 		}
 	}
 
-	return apiParams, nil
+	return &postman.APIParam{
+		BaseURL:    a.baseURL,
+		HTTPMethod: endpoint.method,
+		Path:       endpoint.path,
+		Body:       jsonBody,
+		Headers:    a.headers,
+	}, nil
 }
 
 type endpoint struct {
@@ -131,11 +122,7 @@ type endpoint struct {
 	path   string
 }
 
-func newEndpoint(rule *annotations.HttpRule) *endpoint {
-	if rule == nil {
-		return nil
-	}
-
+func newEndpoint(rule *annotations.HttpRule) (*endpoint, error) {
 	var e *endpoint
 	switch opt := rule.GetPattern().(type) {
 	case *annotations.HttpRule_Get:
@@ -148,7 +135,9 @@ func newEndpoint(rule *annotations.HttpRule) *endpoint {
 		e = &endpoint{"DELETE", opt.Delete}
 	case *annotations.HttpRule_Patch:
 		e = &endpoint{"PATCH", opt.Patch}
+	default:
+		return nil, xerrors.New("annotation http rule method dose not support type")
 	}
 
-	return e
+	return e, nil
 }

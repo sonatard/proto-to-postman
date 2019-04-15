@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/sonatard/proto-to-postman/postman"
-
 	"golang.org/x/xerrors"
 )
 
