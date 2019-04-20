@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
 	"github.com/jhump/protoreflect/desc"
 	"github.com/sonatard/proto-to-postman/pbdesc"
@@ -8,6 +9,12 @@ import (
 	"golang.org/x/xerrors"
 	"google.golang.org/genproto/googleapis/api/annotations"
 )
+
+var marshalOpt = &jsonpb.Marshaler{
+	EnumsAsInts:  true,
+	EmitDefaults: true,
+	Indent:       "\t",
+}
 
 type apiParamsBuilder struct {
 	baseURL string
@@ -102,10 +109,17 @@ func (a *apiParamsBuilder) apiParamByHTTPRule(rule *annotations.HttpRule, inputT
 
 	var jsonBody string
 	if !bodyNotFound {
-		jsonBody, err = a.pbdesc.JSONBody(bodyMsgType)
+		msg, err := a.pbdesc.NewMessage(bodyMsgType)
 		if err != nil {
 			return nil, xerrors.Errorf(": %w", err)
 		}
+
+		b, err := msg.MarshalJSONPB(marshalOpt)
+		if err != nil {
+			return nil, xerrors.Errorf(": %w", err)
+		}
+
+		jsonBody = string(b)
 	}
 
 	return &postman.APIParam{
