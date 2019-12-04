@@ -34,6 +34,10 @@ func (f *ProtoDescriptor) NewMessage(baseMsgType *desc.MessageDescriptor) (*dyna
 	base := dynamic.NewMessage(baseMsgType)
 
 	for _, field := range baseMsgType.GetFields() {
+		if field.IsRepeated() {
+			continue
+		}
+
 		if field.GetType() == descriptor.FieldDescriptorProto_TYPE_MESSAGE {
 			fieldMsgType := field.GetMessageType()
 			msg, err := f.NewMessage(fieldMsgType)
