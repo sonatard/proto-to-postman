@@ -32,15 +32,15 @@ import "google/api/annotations.proto";
 service UserService {
   rpc GetUser(GetUserRequest) returns (GetUserResponse){
     option (google.api.http) = {
-        post: "/UserService/GetUser"
-        body: "user"
-        additional_bindings {
-          post: "/UserService/GetUser2"
-          body: "*"
-        }
-        additional_bindings {
-          get: "/UserService/GetUser"
-        }
+      post: "/UserService/GetUser"
+      body: "user"
+      additional_bindings {
+        post: "/UserService/GetUser2"
+        body: "*"
+      }
+      additional_bindings {
+        get: "/UserService/GetUser"
+      }
     };
   };
 }
@@ -54,7 +54,6 @@ message GetUserResponse {}
 message User {
   string user_id= 1;
   string user_name = 2;
-
 }
 ```
 
